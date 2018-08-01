@@ -130,6 +130,33 @@ export function dist22D(a: Point2D, b: Point2D): number {
   return dX * dX + dY * dY;
 }
 
+/** Implementing Lorentz Distance */
+/** Returns the square euclidean distance between two vectors. */
+export function dist2_lorentz(a: number[], b: number[]): number {
+  if (a.length !== b.length) {
+    throw new Error('Vectors a and b must be of same length');
+  }
+
+  let result = a[0] * b[0];
+  for (let i = 1; i < a.length; ++i) {
+    result -= a[i] * b[i];
+  }
+  /** acosh = log (x + sqrt(1 + x**2))*/
+  /** result = Math.log(result + Math.sqrt(1 + Math.pow(result, 2))) */
+  result = Math.acosh(result)
+  return result;
+}
+
+/** Returns the square euclidean distance between two 2D points. */
+export function dist2_2D_lorentz(a: number[], b: number[]): number {
+  return dist2_lorentz(a, b);
+}
+
+/** Returns the square euclidean distance between two 3D points. */
+export function dist2_3D_lorentz(a: number[], b: number[]): number {
+  return dist2_lorentz(a, b);
+}
+
 /** Modifies the vector in-place to have unit norm. */
 export function unit(a: Vector): void {
   let norm = Math.sqrt(norm2(a));

@@ -69,7 +69,7 @@ export function findKNNGPUCosine<T>(
 
   function step(resolve: (result: NearestEntry[][]) => void) {
     let progressMsg =
-        'Finding nearest neighbors: ' + (progress * 100).toFixed() + '%';
+        'Finding nearest neighbors using Cosine Distance: ' + (progress * 100).toFixed() + '%';
     util.runAsyncTask(progressMsg, () => {
       let B = piece < modulo ? M + 1 : M;
       let typedB = new Float32Array(B * dim);
@@ -121,6 +121,109 @@ export function findKNNGPUCosine<T>(
   }
   return new Promise<NearestEntry[][]>(resolve => step(resolve));
 }
+
+
+/**
+ * Returns the K nearest neighbors for each vector where the distance
+ * computation is done on the GPU (WebGL) using Lorentz distance.
+ *
+ * @param dataPoints List of data points, where each data point holds an
+ *   n-dimensional vector.
+ * @param k Number of nearest neighbors to find.
+ * @param accessor A method that returns the vector, given the data point.
+ */
+export function findKNNGPULorentz<T>(
+    dataPoints: T[], k: number,
+    accessor: (dataPoint: T) => Float32Array): Promise<NearestEntry[][]> {
+  let N = dataPoints.length;
+  let dim = accessor(dataPoints[0]).length;
+
+  // The goal is to compute a large matrix multiplication A*A.T where A is of
+  // size NxD and A.T is its transpose. This results in a NxN matrix which
+  // could be too big to store on the GPU memory. To avoid memory overflow, we
+  // compute multiple A*partial_A.T where partial_A is of size BxD (B is much
+  // smaller than N). This results in storing only NxB size matrices on the GPU
+  // at a given time.
+
+  // A*A.T will give us NxN matrix holding the cosine distance between every
+  // pair of points, which we sort using KMin data structure to obtain the
+  // K nearest neighbors for each point.
+  let typedArray = vector.toTypedArray(dataPoints, accessor);
+  let bigMatrix = new weblas.pipeline.Tensor([N, dim], typedArray);
+  let nearest: NearestEntry[][] = new Array(N);
+  let numPieces = Math.ceil(N / OPTIMAL_GPU_BLOCK_SIZE);
+  let M = Math.floor(N / numPieces);
+  let modulo = N % numPieces;
+  let offset = 0;
+  let progress = 0;
+  let progressDiff = 1 / (2 * numPieces);
+  let piece = 0;
+
+  function step(resolve: (result: NearestEntry[][]) => void) {
+    let progressMsg =
+        'Finding nearest neighbors using Lorentz Distance: ' + (progress * 100).toFixed() + '%';
+    util.runAsyncTask(progressMsg, () => {
+      let B = piece < modulo ? M + 1 : M;
+      let typedB = new Float32Array(B * dim);
+      for (let i = 0; i < B; ++i) {
+        let vector = accessor(dataPoints[offset + i]);
+        for (let d = 0; d < dim; ++d) {
+          typedB[i * dim + d] = vector[d];
+        }
+      }
+      let partialMatrix = new weblas.pipeline.Tensor([B, dim], typedB);
+      let transformation = new Float32Array(dim * dim);
+
+      transformation[0] = -1
+      for (let i = 1; i < dim; ++i) {
+          transformation[i * dim + i] = 1;
+      }
+      let transformationMatrix = new weblas.pipeline.Tensor([dim, dim], transformation);
+      let transformedMatrix =
+          weblas.pipeline.sgemm(1, partialMatrix, transformationMatrix, null, null);
+
+      // Result is N x B matrix.
+      let result =
+          weblas.pipeline.sgemm(1, bigMatrix, transformedMatrix, null, null);
+      let partial = result.transfer();
+      partialMatrix.delete();
+      result.delete();
+      progress += progressDiff;
+      for (let i = 0; i < B; i++) {
+        let kMin = new KMin<NearestEntry>(k);
+        let iReal = offset + i;
+        for (let j = 0; j < N; j++) {
+          if (j === iReal) {
+            continue;
+          }
+          let lorDist = Math.acosh(partial[j * B + i]);  // [j, i];
+          kMin.add(lorDist, {index: j, dist: lorDist});
+        }
+        nearest[iReal] = kMin.getMinKItems();
+      }
+      progress += progressDiff;
+      offset += B;
+      piece++;
+    }, KNN_GPU_MSG_ID).then(() => {
+      if (piece < numPieces) {
+        step(resolve);
+      } else {
+        logging.setModalMessage(null, KNN_GPU_MSG_ID);
+        bigMatrix.delete();
+        resolve(nearest);
+      }
+    }, error => {
+      // GPU failed. Reverting back to CPU.
+      logging.setModalMessage(null, KNN_GPU_MSG_ID);
+      let distFunc = (a, b, limit) => vector.dist2_lorentz(a, b);
+      findKNN(dataPoints, k, accessor, distFunc).then(nearest => {
+        resolve(nearest);
+      });
+    });
+  }
+  return new Promise<NearestEntry[][]>(resolve => step(resolve));
+}
+
 
 /**
  * Returns the K nearest neighbors for each vector where the distance

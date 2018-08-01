@@ -24,6 +24,8 @@ export let ProjectionsPanelPolymer = PolymerElement({
         {type: Boolean, value: true, observer: '_pcaDimensionToggleObserver'},
     tSNEis3d:
         {type: Boolean, value: true, observer: '_tsneDimensionToggleObserver'},
+    tSNEisHyperbolic:
+        {type: Boolean, value: true, observer: '_tsneManifoldToggleObserver'},
     superviseFactor: {type: Number, value: 0},
     // PCA projection.
     pcaComponents: Array,
@@ -83,6 +85,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   /** Polymer properties. */
   // TODO(nsthorat): Move these to a separate view controller.
   public tSNEis3d: boolean;
+  public tSNEisHyperbolic: boolean;
   public pcaIs3d: boolean;
   public pcaX: number;
   public pcaY: number;
@@ -255,6 +258,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       this.learningRateInput.value = bookmark.tSNELearningRate.toString();
     }
     this.tSNEis3d = bookmark.tSNEis3d;
+    this.tSNEisHyperbolic = bookmark.tSNEisHyperbolic;
 
     // custom
     this.customSelectedSearchByMetadataOption =
@@ -306,6 +310,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       bookmark.tSNELearningRate = +this.learningRateInput.value;
     }
     bookmark.tSNEis3d = this.tSNEis3d;
+    bookmark.tSNEisHyperbolic = this.tSNEisHyperbolic;
 
     // custom
     bookmark.customSelectedSearchByMetadataOption =
@@ -373,6 +378,10 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   }
 
   _tsneDimensionToggleObserver() {
+    this.beginProjection(this.currentProjection);
+  }
+
+  _tsneManifoldToggleObserver() {
     this.beginProjection(this.currentProjection);
   }
 
@@ -473,7 +482,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.perturbTsneButton.disabled = false;
 
     this.dataSet.projectTSNE(
-        this.perplexity, this.learningRate, this.tSNEis3d ? 3 : 2,
+        this.perplexity, this.learningRate, this.tSNEis3d ? 3 : 2, this.tSNEisHyperbolic,
         (iteration: number) => {
           if (iteration != null) {
             this.runTsneButton.disabled = false;

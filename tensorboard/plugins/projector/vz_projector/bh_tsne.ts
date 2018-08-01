@@ -89,6 +89,34 @@ export function dist2_3D(a: number[], b: number[]): number {
   return dX * dX + dY * dY + dZ * dZ;
 }
 
+/** Implementing Lorentz Distance */
+/** Returns the square euclidean distance between two vectors. */
+export function dist2_lorentz(a: number[], b: number[]): number {
+  if (a.length !== b.length) {
+    throw new Error('Vectors a and b must be of same length');
+  }
+
+  let result = a[0] * b[0];
+  for (let i = 1; i < a.length; ++i) {
+    result -= a[i] * b[i];
+  }
+  /** acosh = log (x + sqrt(1 + x**2))*/
+  /** result = Math.log(result + Math.sqrt(1 + Math.pow(result, 2))) */
+  result = Math.acosh(result)
+  return result;
+}
+
+/** Returns the square euclidean distance between two 2D points. */
+export function dist2_2D_lorentz(a: number[], b: number[]): number {
+  return dist2_lorentz(a, b);
+}
+
+/** Returns the square euclidean distance between two 3D points. */
+export function dist2_3D_lorentz(a: number[], b: number[]): number {
+  return dist2_lorentz(a, b);
+}
+
+
 function gaussRandom(rng: () => number): number {
   if (return_v) {
     return_v = false;
@@ -246,6 +274,8 @@ function computeForce_3d(
 export interface TSNEOptions {
   /** How many dimensions. */
   dim: number;
+  /** Is distance Hyperbolic. */
+  isHyperbolic: boolean;
   /** Roughly how many neighbors each point influences. */
   perplexity?: number;
   /** Learning rate. */
@@ -261,6 +291,7 @@ export class TSNE {
   private unlabeledClass: string;
   private labels: string[];
   private labelCounts: {[key: string]: number};
+  private isHyperbolic: boolean;
   /** Random generator */
   private rng: () => number;
   private iter = 0;
@@ -277,16 +308,17 @@ export class TSNE {
        pointB: number[]) => void;
 
   constructor(opt: TSNEOptions) {
-    opt = opt || {dim: 2};
+    opt = opt || {dim: 2, isHyperbolic: false};
     this.perplexity = opt.perplexity || 30;
     this.epsilon = opt.epsilon || 10;
     this.rng = opt.rng || Math.random;
     this.dim = opt.dim;
+    this.isHyperbolic = opt.isHyperbolic;
     if (opt.dim === 2) {
-      this.dist2 = dist2_2D;
+      this.dist2 = opt.isHyperbolic ? dist2_2D_lorentz : dist2_2D;
       this.computeForce = computeForce_2d;
     } else if (opt.dim === 3) {
-      this.dist2 = dist2_3D;
+      this.dist2 = opt.isHyperbolic ? dist2_3D_lorentz : dist2_3D;
       this.computeForce = computeForce_3d;
     } else {
       throw new Error('Only 2D and 3D is supported');

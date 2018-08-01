@@ -303,11 +303,11 @@ export class DataSet {
 
   /** Runs tsne on the data. */
   projectTSNE(
-      perplexity: number, learningRate: number, tsneDim: number,
+      perplexity: number, learningRate: number, tsneDim: number, tsneHyperbolic: boolean,
       stepCallback: (iter: number) => void) {
     this.hasTSNERun = true;
     let k = Math.floor(3 * perplexity);
-    let opt = {epsilon: learningRate, perplexity: perplexity, dim: tsneDim};
+    let opt = {epsilon: learningRate, perplexity: perplexity, dim: tsneDim, isHyperbolic: tsneHyperbolic};
     this.tsne = new TSNE(opt);
     this.tsne.setSupervision(this.superviseLabels, this.superviseInput);
     this.tsne.setSuperviseFactor(this.superviseFactor);
@@ -530,6 +530,7 @@ export class State {
   tSNEPerplexity: number = 0;
   tSNELearningRate: number = 0;
   tSNEis3d: boolean = true;
+  tSNEisHyperbolic: boolean = false;
 
   /** PCA projection component dimensions */
   pcaComponentDimensions: number[] = [];
